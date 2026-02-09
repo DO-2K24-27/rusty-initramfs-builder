@@ -2,12 +2,12 @@
 name = "initramfs-builder"
 version = "0.2.0"
 edition = "2021"
-authors = ["Damien"]
+authors = ["Damien MATHIEU, Axel FRACHE, Evan PAILLARD, Hugo DU-PELOUX"]
 description = "Convert Docker/OCI images to bootable initramfs for microVMs"
 license = "MIT"
 keywords = ["initramfs", "docker", "oci", "microvm", "lambda"]
 categories = ["command-line-utilities", "virtualization"]
-repository = "https://github.com/damien-mathieu1/rusty-initramfs-builder"
+repository = "https://github.com/DO-2K24-27/rusty-initramfs-builder"
 documentation = "https://docs.rs/initramfs-builder"
 readme = "README.md"
 exclude = ["*.cpio.gz", "*.cpio", "vmlinux*", "test-*"]

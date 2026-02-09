@@ -1,6 +1,14 @@
-# rusty-initramfs-builder
+<div align="center">
+<h1>rusty-initramfs-builder</h1>
+A Rusty CLI tool to convert Docker/OCI images into bootable initramfs for microVMs 🦀
 
-A Rust CLI tool to convert Docker/OCI images into bootable initramfs for microVMs.
+![builder](./docs/builder.png)
+
+<div>
+
+  ![Stars](https://img.shields.io/github/stars/DO-2K24-27/rusty-initramfs-builder?logo=github) ![Downloads](https://img.shields.io/crates/d/initramfs-builder?logo=rust)[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![GitHub release](https://img.shields.io/github/v/release/DO-2K24-27/rusty-initramfs-builder?color=success)](https://github.com/DO-2K24-27/rusty-initramfs-builder/releases/latest)
+  </div>
+</div>
 
 ## Installation
 
