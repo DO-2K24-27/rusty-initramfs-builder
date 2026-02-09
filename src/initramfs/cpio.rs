@@ -188,3 +188,95 @@ impl Default for CpioArchive {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_empty_archive() {
+        let archive = CpioArchive::new();
+        assert!(archive.is_empty());
+        assert_eq!(archive.len(), 0);
+    }
+
+    #[test]
+    fn test_archive_from_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+        fs::write(&file_path, b"hello world").unwrap();
+
+        let archive = CpioArchive::from_directory(temp_dir.path()).unwrap();
+        assert_eq!(archive.len(), 1);
+    }
+
+    #[test]
+    fn test_cpio_header_magic() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+        fs::write(&file_path, b"test").unwrap();
+
+        let archive = CpioArchive::from_directory(temp_dir.path()).unwrap();
+        let mut output = Vec::new();
+        archive.write_to(&mut output).unwrap();
+
+        let header = String::from_utf8_lossy(&output[..6]);
+        assert_eq!(header, "070701", "CPIO header should start with newc magic");
+    }
+
+    #[test]
+    fn test_cpio_trailer() {
+        let archive = CpioArchive::new();
+        let mut output = Vec::new();
+        archive.write_to(&mut output).unwrap();
+
+        let output_str = String::from_utf8_lossy(&output);
+        assert!(
+            output_str.contains("TRAILER!!!"),
+            "Archive should end with TRAILER!!!"
+        );
+    }
+
+    #[test]
+    fn test_multiple_files() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(temp_dir.path().join("a.txt"), b"aaa").unwrap();
+        fs::write(temp_dir.path().join("b.txt"), b"bbb").unwrap();
+        fs::create_dir(temp_dir.path().join("subdir")).unwrap();
+        fs::write(temp_dir.path().join("subdir/c.txt"), b"ccc").unwrap();
+
+        let archive = CpioArchive::from_directory(temp_dir.path()).unwrap();
+        assert_eq!(archive.len(), 4); // 3 files + 1 directory
+    }
+
+    #[test]
+    fn test_symlink_handling() {
+        let temp_dir = TempDir::new().unwrap();
+        let target = temp_dir.path().join("target.txt");
+        let link = temp_dir.path().join("link.txt");
+        fs::write(&target, b"target content").unwrap();
+
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        let archive = CpioArchive::from_directory(temp_dir.path()).unwrap();
+
+        #[cfg(unix)]
+        assert_eq!(archive.len(), 2);
+    }
+
+    #[test]
+    fn test_output_alignment() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(temp_dir.path().join("odd.txt"), b"123").unwrap(); // 3 bytes, needs padding
+
+        let archive = CpioArchive::from_directory(temp_dir.path()).unwrap();
+        let mut output = Vec::new();
+        archive.write_to(&mut output).unwrap();
+
+        // Output should be 4-byte aligned
+        assert_eq!(output.len() % 4, 0, "CPIO output should be 4-byte aligned");
+    }
+}

@@ -78,3 +78,86 @@ pub fn compress_archive(data: &[u8], output_path: &Path, compression: Compressio
 
     Ok(output_size)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::io::Read;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_compression_from_str() {
+        assert_eq!("gzip".parse::<Compression>().unwrap(), Compression::Gzip);
+        assert_eq!("gz".parse::<Compression>().unwrap(), Compression::Gzip);
+        assert_eq!("zstd".parse::<Compression>().unwrap(), Compression::Zstd);
+        assert_eq!("zst".parse::<Compression>().unwrap(), Compression::Zstd);
+        assert_eq!("none".parse::<Compression>().unwrap(), Compression::None);
+        assert_eq!("raw".parse::<Compression>().unwrap(), Compression::None);
+        assert!("invalid".parse::<Compression>().is_err());
+    }
+
+    #[test]
+    fn test_compression_display() {
+        assert_eq!(format!("{}", Compression::Gzip), "gzip");
+        assert_eq!(format!("{}", Compression::Zstd), "zstd");
+        assert_eq!(format!("{}", Compression::None), "none");
+    }
+
+    #[test]
+    fn test_compression_default() {
+        assert_eq!(Compression::default(), Compression::Gzip);
+    }
+
+    #[test]
+    fn test_gzip_compression() {
+        let temp_dir = TempDir::new().unwrap();
+        let output_path = temp_dir.path().join("test.gz");
+        // Use repetitive data that compresses well
+        let data: Vec<u8> = b"hello world ".repeat(100).to_vec();
+
+        let size = compress_archive(&data, &output_path, Compression::Gzip).unwrap();
+
+        assert!(output_path.exists());
+        assert!(size > 0);
+
+        // Verify it's valid gzip and decompresses correctly
+        let file = File::open(&output_path).unwrap();
+        let mut decoder = flate2::read::GzDecoder::new(file);
+        let mut decompressed = Vec::new();
+        decoder.read_to_end(&mut decompressed).unwrap();
+        assert_eq!(decompressed, data);
+    }
+
+    #[test]
+    fn test_zstd_compression() {
+        let temp_dir = TempDir::new().unwrap();
+        let output_path = temp_dir.path().join("test.zst");
+        let data = b"hello world hello world hello world";
+
+        let size = compress_archive(data, &output_path, Compression::Zstd).unwrap();
+
+        assert!(output_path.exists());
+        assert!(
+            size < data.len() as u64,
+            "Compressed size should be smaller"
+        );
+
+        // Verify it's valid zstd
+        let compressed = fs::read(&output_path).unwrap();
+        let decompressed = zstd::decode_all(&compressed[..]).unwrap();
+        assert_eq!(decompressed, data);
+    }
+
+    #[test]
+    fn test_no_compression() {
+        let temp_dir = TempDir::new().unwrap();
+        let output_path = temp_dir.path().join("test.cpio");
+        let data = b"hello world";
+
+        let size = compress_archive(data, &output_path, Compression::None).unwrap();
+
+        assert_eq!(size, data.len() as u64);
+        assert_eq!(fs::read(&output_path).unwrap(), data);
+    }
+}
