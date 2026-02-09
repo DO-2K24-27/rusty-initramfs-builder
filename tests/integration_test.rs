@@ -1,6 +1,6 @@
-use initramfs_builder::{InitramfsBuilder, Compression};
-use std::path::PathBuf;
+use initramfs_builder::{Compression, InitramfsBuilder};
 use std::io::Read;
+use std::path::PathBuf;
 use tokio::fs;
 
 // Create a basic init script for testing
@@ -40,24 +40,20 @@ fn parse_cpio_entries(data: &[u8]) -> Vec<(String, u32, usize)> {
             break;
         }
 
-        let mode = u32::from_str_radix(
-            std::str::from_utf8(&header[14..22]).unwrap_or("0"),
-            16,
-        ).unwrap_or(0);
-        let filesize = usize::from_str_radix(
-            std::str::from_utf8(&header[54..62]).unwrap_or("0"),
-            16,
-        ).unwrap_or(0);
-        let namesize = usize::from_str_radix(
-            std::str::from_utf8(&header[94..102]).unwrap_or("0"),
-            16,
-        ).unwrap_or(0);
+        let mode = u32::from_str_radix(std::str::from_utf8(&header[14..22]).unwrap_or("0"), 16)
+            .unwrap_or(0);
+        let filesize =
+            usize::from_str_radix(std::str::from_utf8(&header[54..62]).unwrap_or("0"), 16)
+                .unwrap_or(0);
+        let namesize =
+            usize::from_str_radix(std::str::from_utf8(&header[94..102]).unwrap_or("0"), 16)
+                .unwrap_or(0);
 
         let name_start = offset + 110;
         if name_start + namesize > data.len() {
             break;
         }
-        
+
         let name = std::str::from_utf8(&data[name_start..name_start + namesize - 1])
             .unwrap_or("")
             .to_string();
@@ -109,7 +105,10 @@ async fn test_build_produces_valid_cpio() -> anyhow::Result<()> {
     assert!(!entries.is_empty());
 
     let paths: Vec<&str> = entries.iter().map(|(p, _, _)| p.as_str()).collect();
-    assert!(paths.iter().any(|p| *p == "bin" || p.starts_with("bin/") || *p == "usr/bin" || p.starts_with("usr/bin/")));
+    assert!(paths.iter().any(|p| *p == "bin"
+        || p.starts_with("bin/")
+        || *p == "usr/bin"
+        || p.starts_with("usr/bin/")));
     assert!(paths.iter().any(|p| *p == "etc" || p.starts_with("etc/")));
 
     println!("CPIO contains {} entries", entries.len());
@@ -140,8 +139,10 @@ async fn test_build_result_metadata() -> anyhow::Result<()> {
     assert_eq!(result.injected_files, 1);
     assert!(result.has_custom_init);
 
-    println!("BuildResult: {} entries, {}B compressed, {}B uncompressed",
-        result.entries, result.compressed_size, result.uncompressed_size);
+    println!(
+        "BuildResult: {} entries, {}B compressed, {}B uncompressed",
+        result.entries, result.compressed_size, result.uncompressed_size
+    );
     Ok(())
 }
 
@@ -169,7 +170,11 @@ async fn test_init_script_injection() -> anyhow::Result<()> {
     assert!(init_entry.is_some());
 
     let (_, mode, size) = init_entry.unwrap();
-    assert!(mode & 0o100 != 0, "init should be executable, got mode {:o}", mode);
+    assert!(
+        mode & 0o100 != 0,
+        "init should be executable, got mode {:o}",
+        mode
+    );
     assert!(*size > 0);
 
     println!("init entry: mode={:o}, size={}", mode, size);
@@ -196,9 +201,13 @@ async fn test_file_injection() -> anyhow::Result<()> {
     let raw_cpio = decompress_gzip(&compressed);
     let entries = parse_cpio_entries(&raw_cpio);
 
-    let injected = entries.iter().find(|(path, _, _)| path == "usr/bin/custom-tool");
-    assert!(injected.is_some(),
-        "CPIO should contain 'usr/bin/custom-tool'");
+    let injected = entries
+        .iter()
+        .find(|(path, _, _)| path == "usr/bin/custom-tool");
+    assert!(
+        injected.is_some(),
+        "CPIO should contain 'usr/bin/custom-tool'"
+    );
 
     let (_, mode, size) = injected.unwrap();
     assert!(mode & 0o100 != 0);
@@ -268,8 +277,10 @@ async fn test_exclude_patterns() -> anyhow::Result<()> {
     assert!(result_excluded.entries < result_full.entries);
     assert!(result_excluded.compressed_size < result_full.compressed_size);
 
-    println!("Full: {} entries, Excluded: {} entries",
-        result_full.entries, result_excluded.entries);
+    println!(
+        "Full: {} entries, Excluded: {} entries",
+        result_full.entries, result_excluded.entries
+    );
     Ok(())
 }
 
@@ -303,6 +314,9 @@ async fn test_reproducibility() -> anyhow::Result<()> {
     let paths2: Vec<&str> = entries2.iter().map(|(p, _, _)| p.as_str()).collect();
     assert_eq!(paths1, paths2);
 
-    println!("Reproducibility: both builds have {} entries with identical paths", result1.entries);
+    println!(
+        "Reproducibility: both builds have {} entries with identical paths",
+        result1.entries
+    );
     Ok(())
 }
