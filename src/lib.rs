@@ -174,17 +174,30 @@ impl InitramfsBuilder {
             }
         }
 
+        let init_dest = rootfs_path.join("init");
         if let Some(init_src) = &self.init_script {
-            let init_dest = rootfs_path.join("init");
             info!("Setting init script from {:?}", init_src);
             fs::copy(init_src, &init_dest)
                 .with_context(|| format!("Failed to copy init script from {:?}", init_src))?;
+        } else {
+            info!("Generating default init script");
+            let default_init = r#"#!/bin/sh
+mount -t proc proc /proc 2>/dev/null
+mount -t sysfs sysfs /sys 2>/dev/null
+mount -t devtmpfs devtmpfs /dev 2>/dev/null
 
-            // Make executable
-            let mut perms = fs::metadata(&init_dest)?.permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&init_dest, perms)?;
+for cmd in /docker-entrypoint.sh /entrypoint.sh /usr/bin/entrypoint.sh; do
+    [ -x "$cmd" ] && exec "$cmd"
+done
+
+exec /bin/sh
+"#;
+            fs::write(&init_dest, default_init)?;
         }
+
+        let mut perms = fs::metadata(&init_dest)?.permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&init_dest, perms)?;
 
         info!("Creating CPIO archive from {:?}", rootfs_path);
 
