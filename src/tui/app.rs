@@ -1,4 +1,8 @@
-use crate::tui::screens::{ImageScreen, LanguageScreen};
+use crate::tui::screens::{
+    ArchScreen, CompressScreen, ImageScreen, InitScreen, InjectScreen, LanguageScreen,
+};
+use crate::tui::screens::init::InitMode;
+use crate::tui::screens::inject::Injection;
 use anyhow::Result;
 use initramfs_builder::{BuildResult, Compression, InitramfsBuilder, RegistryAuth};
 use tokio::sync::mpsc::{self, error::TryRecvError};
@@ -7,6 +11,10 @@ use tokio::sync::mpsc::{self, error::TryRecvError};
 pub enum Screen {
     Language,
     Image,
+    Architecture,
+    Inject,
+    Init,
+    Compression,
     Summary,
     Build,
 }
@@ -15,12 +23,15 @@ pub enum Screen {
 pub enum WizardMode {
     #[default]
     Quick,
+    Advanced,
 }
 
 #[derive(Debug, Clone)]
 pub struct BuildConfig {
     pub image: String,
     pub arch: String,
+    pub injections: Vec<Injection>,
+    pub init_mode: InitMode,
     pub compression: Compression,
     pub output: String,
 }
@@ -29,21 +40,34 @@ impl Default for BuildConfig {
     fn default() -> Self {
         Self {
             image: String::new(),
-            arch: "amd64".to_string(),
+            arch: detect_host_arch().to_string(),
+            injections: Vec::new(),
+            init_mode: InitMode::Default,
             compression: Compression::Gzip,
             output: "initramfs.cpio.gz".to_string(),
         }
     }
 }
 
+fn detect_host_arch() -> &'static str {
+    match std::env::consts::ARCH {
+        "x86_64" => "amd64",
+        "aarch64" => "arm64",
+        _ => "amd64",
+    }
+}
+
 pub struct App {
     pub screen: Screen,
     pub config: BuildConfig,
-    #[allow(dead_code)]
     pub mode: WizardMode,
     pub should_quit: bool,
     pub language_screen: LanguageScreen,
     pub image_screen: ImageScreen,
+    pub arch_screen: ArchScreen,
+    pub inject_screen: InjectScreen,
+    pub init_screen: InitScreen,
+    pub compress_screen: CompressScreen,
     pub build_progress: Option<String>,
     pub build_error: Option<String>,
     pub validation_error: Option<String>,
@@ -54,13 +78,19 @@ pub struct App {
 
 impl App {
     pub fn new() -> Self {
+        let config = BuildConfig::default();
+        let arch_screen = ArchScreen::new_with_default(&config.arch);
         Self {
             screen: Screen::Language,
-            config: BuildConfig::default(),
+            config,
             mode: WizardMode::Quick,
             should_quit: false,
             language_screen: LanguageScreen::new(),
             image_screen: ImageScreen::new(),
+            arch_screen,
+            inject_screen: InjectScreen::new(),
+            init_screen: InitScreen::new(),
+            compress_screen: CompressScreen::new(),
             build_progress: None,
             build_error: None,
             validation_error: None,
@@ -79,7 +109,14 @@ impl App {
                 self.update_image_from_language();
                 Screen::Image
             }
-            Screen::Image => Screen::Summary,
+            Screen::Image => match self.mode {
+                WizardMode::Quick => Screen::Summary,
+                WizardMode::Advanced => Screen::Architecture,
+            },
+            Screen::Architecture => Screen::Inject,
+            Screen::Inject => Screen::Init,
+            Screen::Init => Screen::Compression,
+            Screen::Compression => Screen::Summary,
             Screen::Summary => Screen::Build,
             Screen::Build => Screen::Build,
         };
@@ -92,21 +129,43 @@ impl App {
         self.screen = match self.screen {
             Screen::Language => Screen::Language,
             Screen::Image => Screen::Language,
-            Screen::Summary => Screen::Image,
+            Screen::Architecture => Screen::Image,
+            Screen::Inject => Screen::Architecture,
+            Screen::Init => Screen::Inject,
+            Screen::Compression => Screen::Init,
+            Screen::Summary => match self.mode {
+                WizardMode::Quick => Screen::Image,
+                WizardMode::Advanced => Screen::Compression,
+            },
             Screen::Build => Screen::Summary,
         };
         self.sync_screen_on_enter();
     }
 
+    pub fn enter_advanced_mode(&mut self) {
+        self.mode = WizardMode::Advanced;
+        self.screen = Screen::Architecture;
+        self.sync_screen_on_enter();
+    }
+
     pub fn sync_screen_on_enter(&mut self) {
-        if let Screen::Image = self.screen {
-            self.image_screen.sync_from_config(&self.config.image);
+        match self.screen {
+            Screen::Image => self.image_screen.sync_from_config(&self.config.image),
+            Screen::Architecture => self.arch_screen.sync_from_config(&self.config.arch),
+            _ => {}
         }
     }
 
     pub fn sync_screen_on_exit(&mut self) {
-        if let Screen::Image = self.screen {
-            self.config.image = self.image_screen.sync_to_config();
+        match self.screen {
+            Screen::Image => self.config.image = self.image_screen.sync_to_config(),
+            Screen::Architecture => {
+                self.config.arch = self.arch_screen.get_selected().to_string()
+            }
+            Screen::Inject => self.config.injections = self.inject_screen.get_injections(),
+            Screen::Init => self.config.init_mode = self.init_screen.get_init_mode(),
+            Screen::Compression => self.config.compression = self.compress_screen.get_selected(),
+            _ => {}
         }
     }
 
@@ -142,6 +201,10 @@ impl App {
         true
     }
 
+    pub fn is_config_valid(&self) -> bool {
+        !self.config.image.trim().is_empty()
+    }
+
     pub fn start_build(&mut self) {
         self.screen = Screen::Build;
         self.build_progress = Some("Building initramfs...".to_string());
@@ -151,16 +214,26 @@ impl App {
         let arch = self.config.arch.clone();
         let compression = self.config.compression;
         let output = self.config.output.clone();
+        let injections = self.config.injections.clone();
+        let init_mode = self.config.init_mode.clone();
         let (tx, rx) = mpsc::channel::<Result<BuildResult>>(1);
 
         self.build_receiver = Some(rx);
 
         tokio::spawn(async move {
-            let builder = InitramfsBuilder::new()
+            let mut builder = InitramfsBuilder::new()
                 .image(&image)
                 .compression(compression)
                 .platform("linux", &arch)
                 .auth(RegistryAuth::Anonymous);
+
+            for inj in &injections {
+                builder = builder.inject(&inj.src, &inj.dest);
+            }
+
+            if let InitMode::CustomFile(path) = init_mode {
+                builder = builder.init_script(path);
+            }
 
             let result = builder.build(&output).await;
             let _ = tx.send(result).await;
@@ -205,9 +278,20 @@ impl App {
     }
 
     pub fn generate_cli_command(&self) -> String {
-        format!(
-            "initramfs-builder build {} \\\n  --platform-arch {} \\\n  -c {} \\\n  -o {}",
-            self.config.image, self.config.arch, self.config.compression, self.config.output
-        )
+        let mut cmd = format!("initramfs-builder build {}", self.config.image);
+
+        for inj in &self.config.injections {
+            cmd.push_str(&format!(" \\\n  --inject {}:{}", inj.src, inj.dest));
+        }
+
+        if let InitMode::CustomFile(path) = &self.config.init_mode {
+            cmd.push_str(&format!(" \\\n  --init {}", path.display()));
+        }
+
+        cmd.push_str(&format!(" \\\n  --platform-arch {}", self.config.arch));
+        cmd.push_str(&format!(" \\\n  -c {}", self.config.compression));
+        cmd.push_str(&format!(" \\\n  -o {}", self.config.output));
+
+        cmd
     }
 }
