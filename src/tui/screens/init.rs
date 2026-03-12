@@ -68,7 +68,11 @@ pub fn draw(frame: &mut Frame, area: Rect, screen: &InitScreen) {
     state.select(Some(screen.selected));
 
     let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title(" Init Script "))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Init Script "),
+        )
         .highlight_style(Style::default().bg(Color::DarkGray));
 
     frame.render_stateful_widget(list, chunks[0], &mut state);

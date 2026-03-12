@@ -1,8 +1,8 @@
+use crate::tui::screens::init::InitMode;
+use crate::tui::screens::inject::Injection;
 use crate::tui::screens::{
     ArchScreen, CompressScreen, ImageScreen, InitScreen, InjectScreen, LanguageScreen,
 };
-use crate::tui::screens::init::InitMode;
-use crate::tui::screens::inject::Injection;
 use anyhow::Result;
 use initramfs_builder::{BuildResult, Compression, InitramfsBuilder, RegistryAuth};
 use tokio::sync::mpsc::{self, error::TryRecvError};
@@ -159,9 +159,7 @@ impl App {
     pub fn sync_screen_on_exit(&mut self) {
         match self.screen {
             Screen::Image => self.config.image = self.image_screen.sync_to_config(),
-            Screen::Architecture => {
-                self.config.arch = self.arch_screen.get_selected().to_string()
-            }
+            Screen::Architecture => self.config.arch = self.arch_screen.get_selected().to_string(),
             Screen::Inject => self.config.injections = self.inject_screen.get_injections(),
             Screen::Init => self.config.init_mode = self.init_screen.get_init_mode(),
             Screen::Compression => self.config.compression = self.compress_screen.get_selected(),

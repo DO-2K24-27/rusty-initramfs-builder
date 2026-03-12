@@ -41,7 +41,9 @@ pub fn render_app(frame: &mut Frame, app: &App) {
         Screen::Language => " ↑↓ Select | ←→ Version | Enter Next | Esc Quit ",
         Screen::Image => " Type image ref | Enter Next | Esc Back ",
         Screen::Architecture => " ↑↓ Select | Enter Next | Esc Back ",
-        Screen::Inject => " a Add | d Delete | ↑↓ Select | Tab Switch field | Enter Next | Esc Back ",
+        Screen::Inject => {
+            " a Add | d Delete | ↑↓ Select | Tab Switch field | Enter Next | Esc Back "
+        }
         Screen::Init => " ↑↓ Select | Enter Next | Esc Back ",
         Screen::Compression => " ↑↓ Select | Enter Next | Esc Back ",
         Screen::Summary => " Enter Build | a Advanced options | Esc Back | q Quit ",
