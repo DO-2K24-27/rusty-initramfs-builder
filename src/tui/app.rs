@@ -199,10 +199,6 @@ impl App {
         true
     }
 
-    pub fn is_config_valid(&self) -> bool {
-        !self.config.image.trim().is_empty()
-    }
-
     pub fn start_build(&mut self) {
         self.screen = Screen::Build;
         self.build_progress = Some("Building initramfs...".to_string());
