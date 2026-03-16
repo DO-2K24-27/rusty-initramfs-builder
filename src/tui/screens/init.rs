@@ -27,11 +27,13 @@ impl InitScreen {
         self.selected = 1 - self.selected;
     }
 
-    pub fn get_init_mode(&self) -> InitMode {
+    pub fn get_init_mode(&self) -> Option<InitMode> {
         if self.selected == 0 {
-            InitMode::Default
+            Some(InitMode::Default)
+        } else if self.path_input.trim().is_empty() {
+            None
         } else {
-            InitMode::CustomFile(PathBuf::from(&self.path_input))
+            Some(InitMode::CustomFile(PathBuf::from(&self.path_input)))
         }
     }
 }

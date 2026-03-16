@@ -119,7 +119,11 @@ fn handle_inject_keys(app: &mut App, key: KeyCode) {
 fn handle_init_keys(app: &mut App, key: KeyCode) {
     match key {
         KeyCode::Up | KeyCode::Down => app.init_screen.toggle(),
-        KeyCode::Enter => app.next_screen(),
+        KeyCode::Enter => {
+            if app.validate_current_screen() {
+                app.next_screen();
+            }
+        }
         KeyCode::Esc => app.prev_screen(),
         KeyCode::Backspace if app.init_screen.selected == 1 => {
             app.init_screen.path_input.pop();

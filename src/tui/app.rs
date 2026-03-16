@@ -38,13 +38,14 @@ pub struct BuildConfig {
 
 impl Default for BuildConfig {
     fn default() -> Self {
+        let compression = Compression::Gzip;
         Self {
             image: String::new(),
             arch: detect_host_arch().to_string(),
             injections: Vec::new(),
             init_mode: InitMode::Default,
-            compression: Compression::Gzip,
-            output: "initramfs.cpio.gz".to_string(),
+            compression,
+            output: format!("initramfs{}", output_extension(compression)),
         }
     }
 }
@@ -55,6 +56,32 @@ fn detect_host_arch() -> &'static str {
         "aarch64" => "arm64",
         _ => "amd64",
     }
+}
+
+fn output_extension(compression: Compression) -> &'static str {
+    match compression {
+        Compression::Gzip => ".cpio.gz",
+        Compression::Zstd => ".cpio.zst",
+        Compression::None => ".cpio",
+    }
+}
+
+fn sync_output_extension(output: &str, compression: Compression) -> String {
+    let base = if let Some(base) = output.strip_suffix(".cpio.gz") {
+        base
+    } else if let Some(base) = output.strip_suffix(".cpio.zst") {
+        base
+    } else if let Some(base) = output.strip_suffix(".cpio") {
+        base
+    } else {
+        output
+    };
+
+    format!("{}{}", base, output_extension(compression))
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 pub struct App {
@@ -143,6 +170,7 @@ impl App {
     }
 
     pub fn enter_advanced_mode(&mut self) {
+        self.sync_screen_on_exit();
         self.mode = WizardMode::Advanced;
         self.screen = Screen::Architecture;
         self.sync_screen_on_enter();
@@ -161,8 +189,16 @@ impl App {
             Screen::Image => self.config.image = self.image_screen.sync_to_config(),
             Screen::Architecture => self.config.arch = self.arch_screen.get_selected().to_string(),
             Screen::Inject => self.config.injections = self.inject_screen.get_injections(),
-            Screen::Init => self.config.init_mode = self.init_screen.get_init_mode(),
-            Screen::Compression => self.config.compression = self.compress_screen.get_selected(),
+            Screen::Init => {
+                if let Some(init_mode) = self.init_screen.get_init_mode() {
+                    self.config.init_mode = init_mode;
+                }
+            }
+            Screen::Compression => {
+                let compression = self.compress_screen.get_selected();
+                self.config.compression = compression;
+                self.config.output = sync_output_extension(&self.config.output, compression);
+            }
             _ => {}
         }
     }
@@ -188,6 +224,12 @@ impl App {
                     return false;
                 }
             }
+            Screen::Init => {
+                if self.init_screen.get_init_mode().is_none() {
+                    self.validation_error = Some("Custom init path cannot be empty".to_string());
+                    return false;
+                }
+            }
             Screen::Summary => {
                 if self.config.image.trim().is_empty() {
                     self.validation_error = Some("Image is required".to_string());
@@ -200,8 +242,19 @@ impl App {
     }
 
     pub fn start_build(&mut self) {
+        self.validation_error = None;
+        if let Err(err) = self.validate_init_script_path() {
+            self.screen = Screen::Init;
+            self.build_progress = None;
+            self.build_error = None;
+            self.validation_error = Some(err);
+            self.sync_screen_on_enter();
+            return;
+        }
+
         self.screen = Screen::Build;
         self.build_progress = Some("Building initramfs...".to_string());
+        self.build_error = None;
         self.loading_frame = 0;
 
         let image = self.config.image.clone();
@@ -232,6 +285,22 @@ impl App {
             let result = builder.build(&output).await;
             let _ = tx.send(result).await;
         });
+    }
+
+    fn validate_init_script_path(&self) -> std::result::Result<(), String> {
+        match &self.config.init_mode {
+            InitMode::Default => Ok(()),
+            InitMode::CustomFile(path) => {
+                if path.exists() && path.is_file() {
+                    Ok(())
+                } else {
+                    Err(format!(
+                        "Custom init path must be an existing file: {}",
+                        path.display()
+                    ))
+                }
+            }
+        }
     }
 
     pub fn check_build_status(&mut self) {
@@ -275,16 +344,20 @@ impl App {
         let mut cmd = format!("initramfs-builder build {}", self.config.image);
 
         for inj in &self.config.injections {
-            cmd.push_str(&format!(" \\\n  --inject {}:{}", inj.src, inj.dest));
+            let inject = format!("{}:{}", inj.src, inj.dest);
+            cmd.push_str(&format!(" \\\n  --inject {}", shell_quote(&inject)));
         }
 
         if let InitMode::CustomFile(path) = &self.config.init_mode {
-            cmd.push_str(&format!(" \\\n  --init {}", path.display()));
+            cmd.push_str(&format!(
+                " \\\n  --init {}",
+                shell_quote(&path.display().to_string())
+            ));
         }
 
         cmd.push_str(&format!(" \\\n  --platform-arch {}", self.config.arch));
         cmd.push_str(&format!(" \\\n  -c {}", self.config.compression));
-        cmd.push_str(&format!(" \\\n  -o {}", self.config.output));
+        cmd.push_str(&format!(" \\\n  -o {}", shell_quote(&self.config.output)));
 
         cmd
     }
