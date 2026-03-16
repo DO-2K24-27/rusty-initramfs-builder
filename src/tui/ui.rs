@@ -1,4 +1,4 @@
-use crate::tui::app::{App, Screen};
+use crate::tui::app::{App, Screen, WizardMode};
 use crate::tui::screens;
 use ratatui::{
     prelude::*,
@@ -15,7 +15,10 @@ pub fn render_app(frame: &mut Frame, app: &App) {
         ])
         .split(frame.area());
 
-    let mode_label = "Quick mode";
+    let mode_label = match app.mode {
+        WizardMode::Quick => "Quick mode",
+        WizardMode::Advanced => "Advanced mode",
+    };
     let header_title = format!(" initramfs-builder interactive [{}] ", mode_label);
     let header_widget = Paragraph::new(header_title)
         .style(Style::default().fg(Color::Cyan).bold())
@@ -26,6 +29,10 @@ pub fn render_app(frame: &mut Frame, app: &App) {
     match app.screen {
         Screen::Language => screens::language::draw(frame, body_area, &app.language_screen),
         Screen::Image => screens::image::draw(frame, body_area, &app.image_screen),
+        Screen::Architecture => screens::arch::draw(frame, body_area, &app.arch_screen),
+        Screen::Inject => screens::inject::draw(frame, body_area, &app.inject_screen),
+        Screen::Init => screens::init::draw(frame, body_area, &app.init_screen),
+        Screen::Compression => screens::compress::draw(frame, body_area, &app.compress_screen),
         Screen::Summary => screens::summary::draw(frame, body_area, app),
         Screen::Build => render_build_status(frame, body_area, app),
     }
@@ -33,7 +40,13 @@ pub fn render_app(frame: &mut Frame, app: &App) {
     let help_bar_text = match app.screen {
         Screen::Language => " ↑↓ Select | ←→ Version | Enter Next | Esc Quit ",
         Screen::Image => " Type image ref | Enter Next | Esc Back ",
-        Screen::Summary => " Enter Build | Esc Back | q Quit ",
+        Screen::Architecture => " ↑↓ Select | Enter Next | Esc Back ",
+        Screen::Inject => {
+            " a Add | d Delete | ↑↓ Select | Tab Switch field | Enter Next | Esc Back "
+        }
+        Screen::Init => " ↑↓ Select | Enter Next | Esc Back ",
+        Screen::Compression => " ↑↓ Select | Enter Next | Esc Back ",
+        Screen::Summary => " Enter Build | a Advanced options | Esc Back | q Quit ",
         Screen::Build => {
             if app.build_success || app.build_error.is_some() {
                 " Enter/q Quit "
