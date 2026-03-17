@@ -13,7 +13,7 @@ A Rusty CLI tool to convert Docker/OCI images into bootable initramfs for microV
 ## CLI Installation
 
 ```bash
-cargo install initramfs-builder
+cargo install initramfs-builder --bin initramfs-builder -F cli
 ```
 
 ## Quick Start
