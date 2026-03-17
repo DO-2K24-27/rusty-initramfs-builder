@@ -14,7 +14,6 @@ exclude = ["*.cpio.gz", "*.cpio", "vmlinux*", "test-*"]
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
-clap = { version = "4", features = ["derive"] }
 oci-distribution = "0.11"
 tar = "0.4"
 flate2 = "1.0"
@@ -25,13 +24,16 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-indicatif = "0.17"
 glob = "0.3"
 tempfile = "3"
 futures = "0.3"
 walkdir = "2"
-ratatui = "0.30.0"
-crossterm = "0.29.0"
+
+# CLI dependencies
+clap = { version = "4", features = ["derive"], optional = true }
+ratatui = { version = "0.30.0", optional = true }
+crossterm = { version = "0.29.0", optional = true }
+indicatif = { version = "0.17", optional = true }
 
 [dev-dependencies]
 tokio-test = "0.4"
@@ -39,7 +41,12 @@ tokio-test = "0.4"
 [[bin]]
 name = "initramfs-builder"
 path = "src/main.rs"
+required-features = ["cli"]
 
 [lib]
 name = "initramfs_builder"
 path = "src/lib.rs"
+
+[features]
+default = []
+cli = ["clap", "ratatui", "crossterm", "indicatif"]
